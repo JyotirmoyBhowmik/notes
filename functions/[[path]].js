@@ -1,34 +1,15 @@
 const NOTES_PER_PAGE = 10;
 const SESSION_DURATION_SECONDS = 30*86400; // Session 有效期: 30 天
 const SESSION_COOKIE = '__session';
-/*export default {
-	async fetch(request, env, ctx) {
-		return await handleApiRequest(request, env);
-	},
+export default {
+  async fetch(request, env) {
+    return await handleApiRequest(request, env);
+  },
 };
 
 /**
  * API 请求的统一处理器和路由
  */
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-
-    // 1. ALLOW STATIC ASSETS (HTML, CSS, JS, Images)
-    // This allows the browser to actually load the login page.
-    if (!url.pathname.startsWith('/api')) {
-      return env.ASSETS.fetch(request); 
-    }
-
-    // 2. PROTECT API ROUTES
-    // Only requests starting with /api will now require a login check.
-    if (url.pathname === '/api/v1/login' && request.method === 'POST') {
-      return handleLogin(request, env);
-    }
-
-    // ... (rest of your API logic for /api/v1/memo etc.)
-  }
-}
 
 
 async function handleApiRequest(request, env) {

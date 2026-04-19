@@ -14,36 +14,9 @@ const SESSION_COOKIE = '__session';
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
-
-    // 1. THE BYPASS (This fixes the SyntaxError)
-    // If the request is NOT for the API, let Cloudflare serve the static files.
-    if (!url.pathname.startsWith('/api')) {
-      return env.ASSETS.fetch(request);
-    }
-
-    // 2. THE API GATEKEEPER
-    // Everything below this line only handles /api requests
-    if (url.pathname === '/api/v1/login' && request.method === 'POST') {
-      return handleLogin(request, env);
-    }
-
-	if (url.pathname === '/api/settings') {
-  const result = await env.DB.prepare("SELECT * FROM settings").all();
-  return Response.json(result.results);
-}
-
-
-
-
-
-
-
-	  
-    
-    // ... (Your other API logic for memos/tags/settings)
-  }
-}
+    return await handleApiRequest(request, env);
+  },
+};
 
 
 

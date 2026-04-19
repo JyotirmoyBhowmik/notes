@@ -5179,14 +5179,16 @@
 			}
 		} catch (error) {
 			console.error('Initialization failed:', error);
-			document.body.innerHTML = 'Failed to initialize the application. Please check your connection and try again.';
+			document.body.innerHTML = '<div style="padding: 2rem; text-align: center; color: var(--text-secondary);">Failed to initialize the application. Please check your connection and try again.</div>';
 		} finally {
 			document.body.classList.remove('loading');
 			const initialLoader = document.getElementById('initial-loader');
-			initialLoader.style.opacity = '0';
-			setTimeout(() => {
-				initialLoader.style.display = 'none';
-			}, 200);
+			if (initialLoader) {
+				initialLoader.style.opacity = '0';
+				setTimeout(() => {
+					initialLoader.style.display = 'none';
+				}, 200);
+			}
 		}
 	}
 

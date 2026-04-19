@@ -1,7 +1,7 @@
 const NOTES_PER_PAGE = 10;
 const SESSION_DURATION_SECONDS = 30*86400; // Session 有效期: 30 天
 const SESSION_COOKIE = '__session';
-export default {
+/*export default {
 	async fetch(request, env, ctx) {
 		return await handleApiRequest(request, env);
 	},
@@ -10,6 +10,33 @@ export default {
 /**
  * API 请求的统一处理器和路由
  */
+
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    // 1. ALLOW THE WEBSITE TO LOAD
+    // If the request is NOT for an API route, let Cloudflare Pages serve the HTML/JS/CSS
+    if (!url.pathname.startsWith('/api')) {
+      return env.ASSETS.fetch(request); 
+    }
+
+    // 2. PROTECT THE API
+    // Now the logic below will only run when the app tries to save or load data
+    if (url.pathname === '/api/v1/login' && request.method === 'POST') {
+      return handleLogin(request, env);
+    }
+
+    // ... existing session check and API logic ...
+  }
+}
+
+
+
+
+
+
 async function handleApiRequest(request, env) {
 	const { pathname } = new URL(request.url);
 

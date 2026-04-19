@@ -17,7 +17,6 @@ binding = "NOTES_KV"
 id = "769b00c8e0b64c1e9367c8f1d153d570"
 preview_id = ""
 
-[[r2_buckets]]
-binding = "NOTES_R2_BUCKET"
-bucket_name = "YOUR_R2_BUCKET_NAME"
-preview_bucket_name = "notes-files-preview"
+[vars]
+SUPABASE_URL = "https://your-project-id.supabase.co"
+SUPABASE_KEY = "your-supabase-api-key"

@@ -1,6 +1,8 @@
 const NOTES_PER_PAGE = 10;
 const SESSION_DURATION_SECONDS = 30*86400; // Session 有效期: 30 天
 const SESSION_COOKIE = '__session';
+import { createClient } from '@supabase/supabase-js';
+
 export default {
   async fetch(request, env) {
     return await handleApiRequest(request, env);
@@ -14,6 +16,7 @@ export default {
 
 async function handleApiRequest(request, env) {
 	const { pathname } = new URL(request.url);
+	const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
 
 	// 对于静态页面路径，直接让 Pages 提供静态资源
 	if (!pathname.startsWith('/api') && !pathname.startsWith('/share')) {
@@ -595,7 +598,7 @@ async function handleNotesList(request, env) {
 					// 只有当文件存在，并且 MIME 类型不是图片时，才将其添加到 filesMeta
 					if (file.name && file.size > 0 && !file.type.startsWith('image/')) {
 						const fileId = crypto.randomUUID();
-						await env.NOTES_R2_BUCKET.put(`${noteId}/${fileId}`, file.stream());
+						await supabase.storage.from('memo').upload(`${noteId}/${fileId}`, file.stream(), { upsert: true });
 						filesMeta.push({ id: fileId, name: file.name, size: file.size, type: file.type });
 					}
 				}
@@ -661,7 +664,7 @@ async function handleNoteDetail(request, noteId, env) {
 					const filesToDelete = JSON.parse(formData.get('filesToDelete') || '[]');
 					if (filesToDelete.length > 0) {
 						const r2KeysToDelete = filesToDelete.map(fileId => `${id}/${fileId}`);
-						await env.NOTES_R2_BUCKET.delete(r2KeysToDelete);
+						await supabase.storage.from('memo').remove(r2KeysToDelete);
 						currentFiles = currentFiles.filter(file => !filesToDelete.includes(file.id));
 					}
 
@@ -672,7 +675,7 @@ async function handleNoteDetail(request, noteId, env) {
 						// 1. 删除 R2 中的所有剩余文件（如果有的话，虽然逻辑上这里 currentFiles 应该是空的）
 						const allR2Keys = existingNote.files.map(file => `${id}/${file.id}`);
 						if (allR2Keys.length > 0) {
-							await env.NOTES_R2_BUCKET.delete(allR2Keys);
+							await supabase.storage.from('memo').remove(allR2Keys);
 						}
 						// 2. 从数据库删除笔记
 						await db.prepare("DELETE FROM notes WHERE id = ?").bind(id).run();
@@ -685,7 +688,7 @@ async function handleNoteDetail(request, noteId, env) {
 						// 只有当文件存在，并且不是图片时，才作为附件处理
 						if (file.name && file.size > 0 && !file.type.startsWith('image/')) {
 							const fileId = crypto.randomUUID();
-							await env.NOTES_R2_BUCKET.put(`${id}/${fileId}`, file.stream());
+							await supabase.storage.from('memo').upload(`${id}/${fileId}`, file.stream(), { upsert: true });
 							currentFiles.push({ id: fileId, name: file.name, size: file.size, type: file.type });
 						}
 					}
@@ -755,7 +758,7 @@ async function handleNoteDetail(request, noteId, env) {
 				}
 
 				if (allR2KeysToDelete.length > 0) {
-					await env.NOTES_R2_BUCKET.delete(allR2KeysToDelete);
+					await supabase.storage.from('memo').remove(allR2KeysToDelete);
 				}
 
 				await db.prepare("DELETE FROM notes WHERE id = ?").bind(id).run();
@@ -793,17 +796,20 @@ async function handleFileRequest(noteId, fileId, request, env) {
 
 	const fileMeta = files.find(f => f.id === fileId);
 
-	// 尝试从 R2 获取文件对象
-	const object = await env.NOTES_R2_BUCKET.get(`${id}/${fileId}`);
-	if (object === null) {
-		// 如果 R2 中确实没有这个文件，才返回 404
+	// 尝试从 Supabase 获取文件对象
+	const { data: fileData, error } = await supabase.storage.from('memo').download(`${id}/${fileId}`);
+	if (error || !fileData) {
+		// 如果 Supabase 中确实没有这个文件，才返回 404
 		return new Response('File not found in storage', { status: 404 });
 	}
 
 	const headers = new Headers();
-	object.writeHttpMetadata(headers); // 从 R2 对象中写入元数据（如 Content-Type）
-	headers.set('etag', object.httpEtag);
+	// Set content-type from fileMeta or default
+	const contentType = fileMeta ? (fileMeta.type || 'application/octet-stream') : 'application/octet-stream';
+	headers.set('Content-Type', contentType);
 	headers.set('Cache-Control', 'public, max-age=86400, immutable');
+	// For etag, we can skip or generate a simple one, as Supabase doesn't provide it directly
+	// headers.set('etag', 'some-etag'); // Optional
 
 	// --- 根据是否存在 fileMeta 来决定如何设置 headers ---
 	if (fileMeta) {
@@ -823,13 +829,13 @@ async function handleFileRequest(noteId, fileId, request, env) {
 		headers.set('Content-Disposition', `${disposition}; filename="${encodeURIComponent(fileMeta.name)}"`);
 	} else {
 		// 【情况二：元数据不存在】这是新的 Telegram 图片，我们只确保它能被浏览器正确显示
-		// Content-Type 已经通过 object.writeHttpMetadata(headers) 从 R2 中设置好了，
-		// 这通常足够让浏览器正确渲染图片。
+		// Content-Type 从 fileData Blob 中获取
+		headers.set('Content-Type', fileData.type || 'application/octet-stream');
 		// 我们将其设置为 inline，确保它在 <img> 标签中能显示而不是被下载。
 		headers.set('Content-Disposition', 'inline');
 	}
 
-	return new Response(object.body, { headers });
+	return new Response(fileData, { headers });
 }
 /**
  *  将 Telegram 的格式化实体 (entities) 转换为 Markdown 文本
@@ -1000,7 +1006,7 @@ async function handleTelegramWebhook(request, env, secret) {
 		}
 
 		const db = env.DB;
-		const bucket = env.NOTES_R2_BUCKET;
+		const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
 		if (!botToken) {
 			console.error("TELEGRAM_BOT_TOKEN secret is not set.");
 			return new Response('Bot not configured', { status: 500 });
@@ -1276,10 +1282,8 @@ async function handleStandaloneImageUpload(request, env) {
 		// 我们将独立上传的图片统一放到一个 'uploads/' 目录下，与笔记附件分开
 		const r2Key = `uploads/${imageId}`;
 
-		// 将文件流上传到 R2
-		await env.NOTES_R2_BUCKET.put(r2Key, file.stream(), {
-			httpMetadata: { contentType: file.type },
-		});
+		// 将文件流上传到 Supabase
+		await supabase.storage.from('memo').upload(r2Key, file, { upsert: true });
 
 		// 返回一个可用于访问此图片的内部 URL
 		// 这个 URL 对应我们下面创建的 handleServeStandaloneImage 函数的路由
@@ -1401,20 +1405,20 @@ async function handleGetAllAttachments(request, env) {
  * @returns {Promise<Response>}
  */
 async function handleServeStandaloneImage(imageId, env) {
+	const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
 	const r2Key = `uploads/${imageId}`;
-	const object = await env.NOTES_R2_BUCKET.get(r2Key);
+	const { data: fileData, error } = await supabase.storage.from('memo').download(r2Key);
 
-	if (object === null) {
+	if (error || !fileData) {
 		return new Response('File not found', { status: 404 });
 	}
 
 	const headers = new Headers();
-	object.writeHttpMetadata(headers);
-	headers.set('etag', object.httpEtag);
+	headers.set('Content-Type', fileData.type || 'application/octet-stream');
 	// 设置长时间的浏览器缓存，因为这些图片内容是不可变的
 	headers.set('Cache-Control', 'public, max-age=31536000, immutable');
 
-	return new Response(object.body, { headers });
+	return new Response(fileData, { headers });
 }
 
 
@@ -1714,25 +1718,24 @@ async function handlePublicFileRequest(publicId, request, env) {
 
 	if (kvData.standaloneImageId) {
 		// 1. 是独立上传的图片
-		object = await env.NOTES_R2_BUCKET.get(`uploads/${kvData.standaloneImageId}`);
+		const { data, error } = await supabase.storage.from('memo').download(`uploads/${kvData.standaloneImageId}`);
+		if (error) return new Response('File not found', { status: 404 });
+		fileData = data;
 		fileName = kvData.fileName || `image_${kvData.standaloneImageId}.png`;
 		contentType = kvData.contentType || 'image/png';
 	} else if (kvData.noteId && kvData.fileId) {
 		// 2. 是笔记的附件
-		object = await env.NOTES_R2_BUCKET.get(`${kvData.noteId}/${kvData.fileId}`);
+		const { data, error } = await supabase.storage.from('memo').download(`${kvData.noteId}/${kvData.fileId}`);
+		if (error) return new Response('File not found', { status: 404 });
+		fileData = data;
 		fileName = kvData.fileName;
 		contentType = kvData.contentType;
 	} else {
 		return new Response('Invalid public link data.', { status: 500 });
 	}
 
-	if (object === null) {
-		return new Response('File not found in storage', { status: 404 });
-	}
-
 	const headers = new Headers();
-	object.writeHttpMetadata(headers);
-	headers.set('etag', object.httpEtag);
+	headers.set('Content-Type', contentType || 'application/octet-stream');
 	headers.set('Cache-Control', 'public, max-age=86400, immutable');
 
 	headers.set('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`);
@@ -1743,7 +1746,7 @@ async function handlePublicFileRequest(publicId, request, env) {
 		headers.set('Content-Type', contentType || 'application/octet-stream');
 	}
 
-	return new Response(object.body, { headers });
+	return new Response(fileData, { headers });
 }
 
 /**
@@ -1997,16 +2000,15 @@ async function handleMergeNotes(request, env) {
 		// 删除源笔记
 		await db.prepare("DELETE FROM notes WHERE id = ?").bind(sourceNote.id).run();
 
-		// 将源笔记的文件移动到目标笔记的 R2 目录下
+		// 将源笔记的文件移动到目标笔记的 Supabase 目录下
 		if (sourceFiles.length > 0) {
-			const r2 = env.NOTES_R2_BUCKET;
+			const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
 			for (const file of sourceFiles) {
 				const oldKey = `${sourceNote.id}/${file.id}`;
 				const newKey = `${targetNote.id}/${file.id}`;
-				const object = await r2.get(oldKey);
-				if (object) {
-					await r2.put(newKey, object.body);
-					await r2.delete(oldKey);
+				const { error: copyError } = await supabase.storage.from('memo').copy(oldKey, newKey);
+				if (!copyError) {
+					await supabase.storage.from('memo').remove([oldKey]);
 				}
 			}
 		}

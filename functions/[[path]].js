@@ -15,6 +15,11 @@ export default {
 async function handleApiRequest(request, env) {
 	const { pathname } = new URL(request.url);
 
+	// 对于静态页面路径，直接让 Pages 提供静态资源
+	if (!pathname.startsWith('/api') && !pathname.startsWith('/share')) {
+		return env.ASSETS.fetch(request);
+	}
+
 	// --- Memos 分享公开路由 ---
 	// 匹配分享页面 /share/some-uuid
 	const sharePageMatch = pathname.match(/^\/share\/([a-zA-Z0-9-]+)$/);

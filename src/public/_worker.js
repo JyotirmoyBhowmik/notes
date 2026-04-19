@@ -16,19 +16,20 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // 1. ALLOW THE WEBSITE TO LOAD
-    // If the request is NOT for an API route, let Cloudflare Pages serve the HTML/JS/CSS
+    // 1. PUBLIC ASSETS BYPASS
+    // If it's not an API call, let it pass through to the static files (HTML/JS/CSS)
     if (!url.pathname.startsWith('/api')) {
-      return env.ASSETS.fetch(request); 
+      return env.ASSETS.fetch(request);
     }
 
-    // 2. PROTECT THE API
-    // Now the logic below will only run when the app tries to save or load data
+    // 2. API AUTHENTICATION
+    // Only requests to /api/v1/... will reach this part of the code
     if (url.pathname === '/api/v1/login' && request.method === 'POST') {
       return handleLogin(request, env);
     }
 
-    // ... existing session check and API logic ...
+    // Add your session check logic here for other /api routes
+    // ...
   }
 }
 

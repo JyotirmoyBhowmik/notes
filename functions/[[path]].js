@@ -14,13 +14,19 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // 1. Allow the frontend files to load freely
+    // 1. ALLOW STATIC ASSETS (HTML, CSS, JS, Images)
+    // This allows the browser to actually load the login page.
     if (!url.pathname.startsWith('/api')) {
       return env.ASSETS.fetch(request); 
     }
 
-    // 2. Protect the API routes with your credentials
-    // (Existing login check code goes here...)
+    // 2. PROTECT API ROUTES
+    // Only requests starting with /api will now require a login check.
+    if (url.pathname === '/api/v1/login' && request.method === 'POST') {
+      return handleLogin(request, env);
+    }
+
+    // ... (rest of your API logic for /api/v1/memo etc.)
   }
 }
 

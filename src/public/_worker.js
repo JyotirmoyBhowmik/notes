@@ -27,6 +27,19 @@ export default {
     if (url.pathname === '/api/v1/login' && request.method === 'POST') {
       return handleLogin(request, env);
     }
+
+	if (url.pathname === '/api/settings') {
+  const result = await env.DB.prepare("SELECT * FROM settings").all();
+  return Response.json(result.results);
+}
+
+
+
+
+
+
+
+	  
     
     // ... (Your other API logic for memos/tags/settings)
   }

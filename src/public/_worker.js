@@ -16,20 +16,19 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // 1. PUBLIC ASSETS BYPASS
-    // If it's not an API call, let it pass through to the static files (HTML/JS/CSS)
+    // 1. THE BYPASS (This fixes the SyntaxError)
+    // If the request is NOT for the API, let Cloudflare serve the static files.
     if (!url.pathname.startsWith('/api')) {
       return env.ASSETS.fetch(request);
     }
 
-    // 2. API AUTHENTICATION
-    // Only requests to /api/v1/... will reach this part of the code
+    // 2. THE API GATEKEEPER
+    // Everything below this line only handles /api requests
     if (url.pathname === '/api/v1/login' && request.method === 'POST') {
       return handleLogin(request, env);
     }
-
-    // Add your session check logic here for other /api routes
-    // ...
+    
+    // ... (Your other API logic for memos/tags/settings)
   }
 }
 

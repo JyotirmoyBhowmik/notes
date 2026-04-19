@@ -1,7 +1,7 @@
 const NOTES_PER_PAGE = 10;
 const SESSION_DURATION_SECONDS = 30*86400; // Session 有效期: 30 天
 const SESSION_COOKIE = '__session';
-export default {
+/*export default {
 	async fetch(request, env, ctx) {
 		return await handleApiRequest(request, env);
 	},
@@ -10,6 +10,21 @@ export default {
 /**
  * API 请求的统一处理器和路由
  */
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    // 1. Allow the frontend files to load freely
+    if (!url.pathname.startsWith('/api')) {
+      return env.ASSETS.fetch(request); 
+    }
+
+    // 2. Protect the API routes with your credentials
+    // (Existing login check code goes here...)
+  }
+}
+
+
 async function handleApiRequest(request, env) {
 	const { pathname } = new URL(request.url);
 
